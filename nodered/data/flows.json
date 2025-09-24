@@ -2,7 +2,23 @@
     {
         "id": "c073de9ba7ed9db1",
         "type": "tab",
-        "label": "Fluxo 1",
+        "label": "IOT -> MQTT -> DB -> WS",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "46860586a1ef1f65",
+        "type": "tab",
+        "label": "Fluxo 2",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "cc199aacb07edde3",
+        "type": "tab",
+        "label": "Fluxo 3",
         "disabled": false,
         "info": "",
         "env": []
@@ -66,20 +82,20 @@
         "id": "fc3856078f0dd452",
         "type": "mqtt in",
         "z": "c073de9ba7ed9db1",
-        "name": "",
-        "topic": "#",
-        "qos": "2",
+        "name": "Device Info",
+        "topic": "device/+/info",
+        "qos": "1",
         "datatype": "auto-detect",
         "broker": "dab3ad35f7fbabda",
         "nl": false,
         "rap": true,
         "rh": 0,
         "inputs": 0,
-        "x": 190,
+        "x": 160,
         "y": 240,
         "wires": [
             [
-                "678b76c3c4b14476"
+                "cb1462e0934a9a73"
             ]
         ]
     },
@@ -96,37 +112,91 @@
         "targetType": "full",
         "statusVal": "",
         "statusType": "auto",
-        "x": 440,
-        "y": 240,
+        "x": 300,
+        "y": 620,
         "wires": []
     },
     {
-        "id": "64054e54f50bd0df",
-        "type": "inject",
+        "id": "de1a752d8ca4a0e6",
+        "type": "function",
         "z": "c073de9ba7ed9db1",
-        "name": "",
-        "props": [
-            {
-                "p": "payload"
-            }
-        ],
-        "repeat": "",
-        "crontab": "",
-        "once": false,
-        "onceDelay": 0.1,
-        "topic": "",
-        "payload": "{\"teste\":\"asdfasdfasdfas\"}",
-        "payloadType": "json",
-        "x": 130,
-        "y": 360,
+        "name": "Parse Info -> Device Upsert -> WS",
+        "func": "const deviceId = msg.payload.device_id;\nif(!deviceId) return null;\n\nmsg.collection = \"devices\";\nmsg.operation = \"updateOne\";\n\nconst update = {\n    $set: {\n        device_id: deviceId,\n        model: msg.payload.model || null,\n        firmware: msg.payload.firmware || null,\n        ip_address: msg.payload.ip_address || null,\n        location: msg.payload.location || null,\n        update_at: new Date(),\n        status: {\n            last_info_ts: new Date(),\n        },\n        raw: JSON.stringify(msg.payload)\n    },\n    $setOnInsert: { created_at: new Date(), _id: msg.payload._id }\n}\n\nmsg.payload = [{ device_id: deviceId }, update, { upsert: true }];\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 620,
+        "y": 240,
         "wires": [
             [
-                "2dba73128e1ca452"
+                "e2f46f02fa6dcced"
             ]
         ]
     },
     {
-        "id": "2dba73128e1ca452",
+        "id": "e2f46f02fa6dcced",
+        "type": "mongodb4",
+        "z": "c073de9ba7ed9db1",
+        "clientNode": "37506c72251a603c",
+        "mode": "collection",
+        "collection": "",
+        "operation": "",
+        "output": "toArray",
+        "maxTimeMS": "0",
+        "handleDocId": false,
+        "name": "Device",
+        "x": 930,
+        "y": 360,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "3d97eab662707380",
+        "type": "mqtt in",
+        "z": "c073de9ba7ed9db1",
+        "name": "Device Status",
+        "topic": "device/+/status",
+        "qos": "1",
+        "datatype": "auto-detect",
+        "broker": "dab3ad35f7fbabda",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 170,
+        "y": 360,
+        "wires": [
+            [
+                "660990a0e4fe5f49"
+            ]
+        ]
+    },
+    {
+        "id": "b04b7d98158a701c",
+        "type": "function",
+        "z": "c073de9ba7ed9db1",
+        "name": "Parse Status -> WS",
+        "func": "const retain = !!msg.retain;\nlet data = {};\ntry { \n    data = (typeof msg.payload === 'string') ? JSON.parse(msg.payload) : msg.payload;\n} catch { \n    return null;\n}\n\nconst parts = (msg.topic || '').split('/');\nconst device_id = parts[1];\nif (!device_id) return null;\n\nconst now = new Date();\nconst set = { 'status.last_seen': now, updated_at: now };\n\nif (data.type === 'state') {\n    if (data.target && data.target.startsWith('led_')){\n        set[`state.leds.${data.target}`] = (data.state === 'on');\n    } \n\n    if (data.target === 'servo_1' && Number.isFinite(+data.angle)){\n        set['state.servo_1'] = +data.angle;\n    }\n\n    if (data.target === 'motor1' && data.state) {\n        set['state.motor1'] = (data.state === 'on');\n    }\n    set['state.updated_at'] = now;\n} else if (data.type === 'snapshot') {\n    if (data.leds) {\n        for (const k of Object.keys(data.leds)) {\n            set[`state.leds.${k}`] = !!data.leds[k]\n        };\n    }\n    \n    if (Number.isFinite(+data.servo_1)) { \n        set['state.servo_1'] = +data.servo_1\n    };\n\n    if (typeof data.motor1 === 'boolean') {\n        set['state.motor1'] = data.motor1;\n    }\n\n    set['state.updated_at'] = now;\n} else if (data.type === 'ping') {\n    // presença apenas\n}\n\nmsg.collection = 'devices';\nmsg.operation = 'updateOne';\nmsg.payload = [\n    { device_id }, \n    { $set: set, $setOnInsert: { created_at: now, device_id, _id: msg.payload._id } }, \n    { upsert: true }\n];\nmsg._wsEvent = { kind: 'status', id: device_id, data, retain };\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 570,
+        "y": 360,
+        "wires": [
+            [
+                "e2f46f02fa6dcced"
+            ]
+        ]
+    },
+    {
+        "id": "cb1462e0934a9a73",
         "type": "uuid",
         "z": "c073de9ba7ed9db1",
         "uuidVersion": "v4",
@@ -136,28 +206,111 @@
         "name": "",
         "field": "payload._id",
         "fieldType": "msg",
-        "x": 310,
-        "y": 360,
+        "x": 350,
+        "y": 240,
         "wires": [
             [
-                "3f0c638def491788"
+                "de1a752d8ca4a0e6"
             ]
         ]
     },
     {
-        "id": "3f0c638def491788",
+        "id": "660990a0e4fe5f49",
+        "type": "uuid",
+        "z": "c073de9ba7ed9db1",
+        "uuidVersion": "v4",
+        "namespaceType": "",
+        "namespace": "",
+        "namespaceCustom": "",
+        "name": "",
+        "field": "payload._id",
+        "fieldType": "msg",
+        "x": 350,
+        "y": 360,
+        "wires": [
+            [
+                "b04b7d98158a701c"
+            ]
+        ]
+    },
+    {
+        "id": "19541a0b1db84b29",
+        "type": "mqtt in",
+        "z": "c073de9ba7ed9db1",
+        "name": "Device Telemetry",
+        "topic": "device/+/telemetry",
+        "qos": "1",
+        "datatype": "auto-detect",
+        "broker": "dab3ad35f7fbabda",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 180,
+        "y": 460,
+        "wires": [
+            [
+                "678b76c3c4b14476",
+                "57843923b862e3e6"
+            ]
+        ]
+    },
+    {
+        "id": "57843923b862e3e6",
+        "type": "uuid",
+        "z": "c073de9ba7ed9db1",
+        "uuidVersion": "v4",
+        "namespaceType": "",
+        "namespace": "",
+        "namespaceCustom": "",
+        "name": "",
+        "field": "payload._id",
+        "fieldType": "msg",
+        "x": 350,
+        "y": 460,
+        "wires": [
+            [
+                "60f4e494aa37bf43"
+            ]
+        ]
+    },
+    {
+        "id": "60f4e494aa37bf43",
+        "type": "function",
+        "z": "c073de9ba7ed9db1",
+        "name": "Parse Telemetry -> WS",
+        "func": "let data = {}\ntry {\n    data = (typeof msg.payload === 'string') ? JSON.parse(msg.payload) : msg.payload;\n}catch {\n    return null;\n}\n\nconst device_id = (msg.topic || '').split(\"/\")[1];\nif(!device_id) return null;\n\nconst obj = {\n    device_id,\n    sensor: msg.payload.sensor || 'unknown',\n    unit: msg.payload.unit || null,\n    value: msg.payload.value || null,\n    created_at: new Date(msg.payload.ts || Date.now()),\n    source: 'telemetry'\n}\n\nconst reading = {   \n    collection: 'readings',\n    operation: 'insertOne',\n    payload: obj\n}\n\nconst devices = {\n    collection: 'devices',\n    operation: 'updatedOne',\n    payload: [\n        { device_id },\n        { \n            $set: { 'status.last_seen': new Date(), updated_at: new Date() },\n            $setOnInsert: { created_at: new Date(), device_id}\n        },\n        { upsert: true }\n    ]\n}\n\nreturn [devices, reading]",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 590,
+        "y": 460,
+        "wires": [
+            [
+                "e2f46f02fa6dcced"
+            ],
+            [
+                "6aaa068c8d8fbe7a"
+            ]
+        ]
+    },
+    {
+        "id": "6aaa068c8d8fbe7a",
         "type": "mongodb4",
         "z": "c073de9ba7ed9db1",
         "clientNode": "37506c72251a603c",
         "mode": "collection",
-        "collection": "testes",
-        "operation": "insertOne",
+        "collection": "",
+        "operation": "",
         "output": "toArray",
         "maxTimeMS": "0",
         "handleDocId": false,
-        "name": "",
-        "x": 500,
-        "y": 360,
+        "name": "Readings",
+        "x": 940,
+        "y": 480,
         "wires": [
             []
         ]

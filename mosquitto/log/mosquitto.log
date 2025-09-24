@@ -806,3 +806,13 @@ To fix this, use `chmod 0700 /mosquitto/config/passwd`.
 1758586526: New connection from 172.19.0.4:37534 on port 1883.
 1758586526: New client connected from 172.19.0.4:37534 as noderedf0f8acfa752c5fae (p2, c1, k60, u'aluno').
 1758587716: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1758587939: New client connected from 172.19.0.1:58092 as esp32-001-web-mfvtuq2m-05c8a7 (p2, c1, k60, u'aluno').
+1758588221: New client connected from 172.19.0.1:51452 as sub-2bfd100c5163a8 (p2, c1, k60, u'aluno').
+1758588248: New client connected from 172.19.0.1:50304 as sub-192020b03c31c (p2, c1, k60, u'aluno').
+1758588504: Client esp32-001-web-mfvtuq2m-05c8a7 closed its connection.
+1758588550: Client pub-fdcafcc051c928 closed its connection.
+1758588574: Client noderedf0f8acfa752c5fae disconnected.
+1758588575: mosquitto version 2.0.22 terminating
+1758588575: Saving in-memory database to /mosquitto/data//mosquitto.db.
+1758588575: Client sub-192020b03c31c closed its connection.
+1758588575: Client sub-2bfd100c5163a8 closed its connection.
