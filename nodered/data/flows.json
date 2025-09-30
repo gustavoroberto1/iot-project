@@ -10,7 +10,7 @@
     {
         "id": "46860586a1ef1f65",
         "type": "tab",
-        "label": "Fluxo 2",
+        "label": "IOT - HTTP",
         "disabled": false,
         "info": "",
         "env": []
@@ -100,23 +100,6 @@
         ]
     },
     {
-        "id": "678b76c3c4b14476",
-        "type": "debug",
-        "z": "c073de9ba7ed9db1",
-        "name": "debug 1",
-        "active": true,
-        "tosidebar": true,
-        "console": false,
-        "tostatus": false,
-        "complete": "true",
-        "targetType": "full",
-        "statusVal": "",
-        "statusType": "auto",
-        "x": 300,
-        "y": 620,
-        "wires": []
-    },
-    {
         "id": "de1a752d8ca4a0e6",
         "type": "function",
         "z": "c073de9ba7ed9db1",
@@ -148,7 +131,7 @@
         "maxTimeMS": "0",
         "handleDocId": false,
         "name": "Device",
-        "x": 930,
+        "x": 990,
         "y": 360,
         "wires": [
             []
@@ -168,7 +151,7 @@
         "rh": 0,
         "inputs": 0,
         "x": 170,
-        "y": 360,
+        "y": 340,
         "wires": [
             [
                 "660990a0e4fe5f49"
@@ -188,7 +171,7 @@
         "finalize": "",
         "libs": [],
         "x": 570,
-        "y": 360,
+        "y": 340,
         "wires": [
             [
                 "e2f46f02fa6dcced"
@@ -226,7 +209,7 @@
         "field": "payload._id",
         "fieldType": "msg",
         "x": 350,
-        "y": 360,
+        "y": 340,
         "wires": [
             [
                 "b04b7d98158a701c"
@@ -250,7 +233,6 @@
         "y": 460,
         "wires": [
             [
-                "678b76c3c4b14476",
                 "57843923b862e3e6"
             ]
         ]
@@ -279,7 +261,7 @@
         "type": "function",
         "z": "c073de9ba7ed9db1",
         "name": "Parse Telemetry -> WS",
-        "func": "let data = {}\ntry {\n    data = (typeof msg.payload === 'string') ? JSON.parse(msg.payload) : msg.payload;\n}catch {\n    return null;\n}\n\nconst device_id = (msg.topic || '').split(\"/\")[1];\nif(!device_id) return null;\n\nconst obj = {\n    device_id,\n    sensor: msg.payload.sensor || 'unknown',\n    unit: msg.payload.unit || null,\n    value: msg.payload.value || null,\n    created_at: new Date(msg.payload.ts || Date.now()),\n    source: 'telemetry'\n}\n\nconst reading = {   \n    collection: 'readings',\n    operation: 'insertOne',\n    payload: obj\n}\n\nconst devices = {\n    collection: 'devices',\n    operation: 'updatedOne',\n    payload: [\n        { device_id },\n        { \n            $set: { 'status.last_seen': new Date(), updated_at: new Date() },\n            $setOnInsert: { created_at: new Date(), device_id}\n        },\n        { upsert: true }\n    ]\n}\n\nreturn [devices, reading]",
+        "func": "let data = {}\ntry {\n    data = (typeof msg.payload === 'string') ? JSON.parse(msg.payload) : msg.payload;\n}catch {\n    return null;\n}\n\nconst device_id = (msg.topic || '').split(\"/\")[1];\nif(!device_id) return null;\n\nconst obj = {\n    _id: msg.payload._id,\n    device_id,\n    sensor: msg.payload.sensor || 'unknown',\n    unit: msg.payload.unit || null,\n    value: msg.payload.value || null,\n    created_at: new Date(msg.payload.ts || Date.now()),\n    source: 'telemetry'\n}\n\nconst reading = {   \n    collection: 'readings',\n    operation: 'insertOne',\n    payload: obj\n}\n\nconst devices = {\n    collection: 'devices',\n    operation: 'updateOne',\n    payload: [\n        { device_id },\n        { \n            $set: { 'status.last_seen': new Date(), updated_at: new Date() },\n            $setOnInsert: { created_at: new Date(), device_id, _id: msg.payload._id }\n        },\n        { upsert: true }\n    ]\n}\n\nreturn [devices, reading]",
         "outputs": 2,
         "timeout": 0,
         "noerr": 0,
@@ -309,10 +291,228 @@
         "maxTimeMS": "0",
         "handleDocId": false,
         "name": "Readings",
-        "x": 940,
-        "y": 480,
+        "x": 980,
+        "y": 460,
         "wires": [
             []
+        ]
+    },
+    {
+        "id": "c19bc1e2451576bf",
+        "type": "mqtt in",
+        "z": "c073de9ba7ed9db1",
+        "name": "Device ACK",
+        "topic": "device/+/ack",
+        "qos": "2",
+        "datatype": "auto-detect",
+        "broker": "dab3ad35f7fbabda",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 170,
+        "y": 580,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "385f3175024085c6",
+        "type": "http in",
+        "z": "46860586a1ef1f65",
+        "name": "GET Devices",
+        "url": "/api/devices",
+        "method": "get",
+        "upload": false,
+        "skipBodyParsing": false,
+        "swaggerDoc": "",
+        "x": 170,
+        "y": 280,
+        "wires": [
+            [
+                "4dd819b243117b27"
+            ]
+        ]
+    },
+    {
+        "id": "4dd819b243117b27",
+        "type": "function",
+        "z": "46860586a1ef1f65",
+        "name": "Find All Devices",
+        "func": "msg.collection = \"devices\";\nmsg.operation = \"find\";\nmsg.payload = [{}, { sort: { 'status.online': -1, device_id: 1 }}]\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 280,
+        "wires": [
+            [
+                "90efbd8a513c9380"
+            ]
+        ]
+    },
+    {
+        "id": "90efbd8a513c9380",
+        "type": "mongodb4",
+        "z": "46860586a1ef1f65",
+        "clientNode": "37506c72251a603c",
+        "mode": "collection",
+        "collection": "",
+        "operation": "",
+        "output": "toArray",
+        "maxTimeMS": "0",
+        "handleDocId": false,
+        "name": "Devices",
+        "x": 600,
+        "y": 280,
+        "wires": [
+            [
+                "e260cc895574ce68"
+            ]
+        ]
+    },
+    {
+        "id": "e260cc895574ce68",
+        "type": "http response",
+        "z": "46860586a1ef1f65",
+        "name": "REPLY - 200 JSON",
+        "statusCode": "200",
+        "headers": {
+            "Content-Type": "application/json"
+        },
+        "x": 790,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "17873f480d9f842b",
+        "type": "http in",
+        "z": "46860586a1ef1f65",
+        "name": "POST Command",
+        "url": "/api/devices/:id/cmd",
+        "method": "post",
+        "upload": false,
+        "skipBodyParsing": false,
+        "swaggerDoc": "",
+        "x": 160,
+        "y": 460,
+        "wires": [
+            [
+                "2401b6b0a0cdc6dc",
+                "0e152c74cde5ae10"
+            ]
+        ]
+    },
+    {
+        "id": "77c9bfc72f43d26b",
+        "type": "function",
+        "z": "46860586a1ef1f65",
+        "name": "Create Command",
+        "func": "const deviceId = msg.req.params.id;\nconst command = msg.req.body;\n\n\nconst value = (typeof command.on === 'boolean') ? { on: command.on } : { angle: +command.angle };\nconst commandDb = {\n    _id: msg.payload._id,\n    device_id: deviceId,\n    target: command.target,\n    payload: value,\n    corr: command.corr,\n    request_by: 'dashboard',\n    request_at: new Date(),\n    ack: null,\n    status: 'sent',\n    delivery: {\n        sent_ts: new Date()\n    },\n    error: null\n}\n\nconst msgInsert = {\n    collection: \"commands\",\n    operation: \"insertOne\",\n    payload: [commandDb]\n}\n\nconst httpResponse = { statusCode: 200,  payload: { ok: true, corr: commandDb.corr } }\n\nconst publishMqtt ={\n    topic: `device/${deviceId}/cmd`,\n    payload: {\n        target: command.target,\n        ...value,\n        corr: command.corr\n    },\n    qos: 1,\n    retain: false\n}\n\nreturn [msgInsert, httpResponse, publishMqtt];",
+        "outputs": 3,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 550,
+        "y": 460,
+        "wires": [
+            [
+                "2545d9eb139d8596"
+            ],
+            [
+                "02d5e249e7af327a"
+            ],
+            [
+                "eb2b17cd29d603ad"
+            ]
+        ]
+    },
+    {
+        "id": "2545d9eb139d8596",
+        "type": "mongodb4",
+        "z": "46860586a1ef1f65",
+        "clientNode": "37506c72251a603c",
+        "mode": "collection",
+        "collection": "",
+        "operation": "",
+        "output": "toArray",
+        "maxTimeMS": "0",
+        "handleDocId": false,
+        "name": "Commands",
+        "x": 810,
+        "y": 400,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "02d5e249e7af327a",
+        "type": "http response",
+        "z": "46860586a1ef1f65",
+        "name": "REPLY - 200",
+        "statusCode": "",
+        "headers": {},
+        "x": 810,
+        "y": 460,
+        "wires": []
+    },
+    {
+        "id": "eb2b17cd29d603ad",
+        "type": "mqtt out",
+        "z": "46860586a1ef1f65",
+        "name": "Send Command Device",
+        "topic": "",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "dab3ad35f7fbabda",
+        "x": 850,
+        "y": 520,
+        "wires": []
+    },
+    {
+        "id": "2401b6b0a0cdc6dc",
+        "type": "debug",
+        "z": "46860586a1ef1f65",
+        "name": "debug 1",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 360,
+        "y": 600,
+        "wires": []
+    },
+    {
+        "id": "0e152c74cde5ae10",
+        "type": "uuid",
+        "z": "46860586a1ef1f65",
+        "uuidVersion": "v4",
+        "namespaceType": "",
+        "namespace": "",
+        "namespaceCustom": "",
+        "name": "",
+        "field": "payload._id",
+        "fieldType": "msg",
+        "x": 350,
+        "y": 460,
+        "wires": [
+            [
+                "77c9bfc72f43d26b"
+            ]
         ]
     }
 ]
