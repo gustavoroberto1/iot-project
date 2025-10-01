@@ -36,6 +36,8 @@ services:
       - mongo_data:/data/db
     restart: unless-stopped
 
+
+
 volumes:
   mongo_data:
 
